@@ -10,6 +10,8 @@
 2. Ubuntu 서버에서 Docker를 설치하고 설정하는 과정을 정리한다.
 3. Docker Hub 이미지를 활용해 컨테이너를 실행하는 과정을 보여준다.
 4. Nginx 컨테이너와 ngrok을 이용해 간단한 웹 서비스 실험을 수행한다.
+5. 4번에서 만들었던 Nginx예제에 docker-volum을 끼워서 새로운 이미지로 docker-hub에 업로드 한다.
+6. 도커를 적용한 프로젝트 예시를  docker + docker-compose가 적용된 사례로 보인다..
 
 ---
 
@@ -227,16 +229,16 @@ Windows 클라이언트의 웹 브라우저에서 위에서 발급된 ngrok URL�
 이미 4.1 절에서 `~/web-test/index.html` 파일을 생성했으므로  
 동일한 디렉터리에서 작업을 이어간다.
 
-### 6.2 Dockerfile 작성 (커스텀 Nginx 이미지)
+### 5.2 Dockerfile 작성 (커스텀 Nginx 이미지)
 
 기존에는 공개 이미지 nginx를 그대로 사용하고 볼륨으로 HTML을 덮어씌웠다.
 이제는 HTML 파일을 이미지 빌드 단계에서 COPY 하는 방식으로 만든다.  
 
-```
+```bash
  vim Dockerfile (다른 에디터 있다면 굳이 vim 쓸필요는 x)
 ```
 ![alt text](image-11.png)
-```
+```bash
 # 베이스 이미지로 공식 nginx 사용
 FROM nginx:latest
 
@@ -248,62 +250,106 @@ COPY index.html /usr/share/nginx/html/index.html
 ```
 ![alt text](image-12.png)
 
-### 6.3 이미지 빌드 (로컬)
+### 5.3 이미지 빌드 (로컬)
 
 Docker Hub에 올리기 위해 Docker Hub 계정명을 포함한 태그로 이미지를 빌드한다.
 아래에서 <dockerhub-id> 부분을 본인의 Docker Hub 계정으로 바꾼다.
-```
+```bash
 docker build -t <dockerhub-id>/web-test:1.0 .
 ```
 
 예시:
-```
+```bash
 docker build -t som14/web-test:1.0 .
 ```
 
 빌드가 완료되면 다음 명령으로 이미지가 생성되었는지 확인한다.
-```
+```bash
 docker images
 ```
 ![alt text](image-13.png)
 <dockerhub-id>/web-test 이름의 이미지가 보이면 성공이다.
 
-### 6.4 커스텀 이미지로 컨테이너 실행 (볼륨 없이)
+### 5.4 커스텀 이미지로 컨테이너 실행 (볼륨 없이)
 
 이제는 이미지 안에 index.html이 포함되어 있으므로,
 볼륨 옵션 없이도 동일한 웹 페이지를 서비스할 수 있다.
-```
+```bash
 docker run -d --name web-test-hub -p 8081:80 <dockerhub-id>/web-test:1.0
 ```
 
 ![alt text](image-14.png)
 
 서버 내부에서 다음과 같이 확인한다.
-```
+```bash
 curl http://localhost:8081
 ```
 
 출력 결과에 이전과 동일한 HTML이 보이면
 커스텀 이미지가 정상적으로 동작하는 것이다.
 
-### 6.5 Docker Hub 로그인 및 이미지 업로드 (push)
+### 5.5 Docker Hub 로그인 및 이미지 업로드 (push)
 
 먼저 Docker Hub에 로그인한다.
-```
+```bash
 docker login
 ```
 
 프롬프트에 Docker Hub 아이디와 비밀번호를 입력한다.
 로그인이 성공하면 다음 명령으로 이미지를 푸시한다.
-```
+```bash
 docker push <dockerhub-id>/web-test:1.0
 ```
 
 예시:
-```
+```bash
 docker push som14/web-test:1.0
 ```
 ![alt text](image-15.png)
 ![alt text](image-16.png)
 업로드가 완료되면 Docker Hub 웹사이트의 Repositories 메뉴에서
 web-test 리포지토리를 확인할 수 있다.
+## 6. gRPC 계산기 프로젝트 및 Docker Compose 활용
+
+> 프로젝트 링크 [grpc calc](https://github.com/som141/rpc-calc)
+> ngrok으로 서버 호스트 결과 [계산기 링크](https://ardella-unmarketable-jacob.ngrok-free.dev/)
+### 서비스 구성
+
+| 서비스 | 역할 | 포트 | 주요 파일 |
+|---|---|---|---|
+| **addService** | gRPC 서버 | 50051 | [AddGrpcService.java](https://github.com/som141/rpc-calc/blob/master/addService/src/main/java/com/example/addservice/grpc/AddGrpcService.java), [application.yml](https://github.com/som141/rpc-calc/blob/master/addService/src/main/resources/application.yml) |
+| **frontServer** | 웹 서버 & gRPC 클라이언트 | 8080 | [CalcController.java](https://github.com/som141/rpc-calc/blob/master/frontServer/src/main/java/com/example/frontserver/web/CalcController.java), [index.html](https://github.com/som141/rpc-calc/blob/master/frontServer/src/main/resources/templates/index.html), [application.yml](https://github.com/som141/rpc-calc/blob/master/frontServer/src/main/resources/application.yml) |
+
+`addService`는 `Add` RPC를 구현하여 두 정수의 합을 계산해 응답한다. `frontServer`의 컨트롤러는 사용자가 입력한 값을 받아 gRPC 요청을 생성하고, 결과를 화면에 표시한다. gRPC 서버의 호스트와 포트는 `frontServer`의 설정 파일에 정의되어 있다.
+
+### Compose 파일
+
+프로젝트 루트에 있는 [`docker-compose.yml`](https://github.com/som141/rpc-calc/blob/master/docker-compose.yml) 은 두 서비스를 함께 빌드하고 실행한다.
+
+```yaml
+version: '3'
+services:
+  add-service:
+    build:
+      context: ./addService
+    ports:
+      - "8081:8080"
+  front-server:
+    build:
+      context: ./frontserver
+    ports:
+      - "8080:8080"
+    environment:
+      CALC_GRPC_HOST: add-service
+      CALC_GRPC_PORT: 8080
+```
+
+add-service 컨테이너는 내부 HTTP/gRPC 포트 8080을 호스트의 8081 포트에 노출하며
+, front-server는 호스트 8080 포트에서 웹 서비스를 제공하고 환경 변수로 gRPC 서버 위치를 지정한다.
+
+실행 방법
+프로젝트 루트에서 docker compose up --build 명령을 실행하면 두 서비스가 빌드되고 실행된다. 빌드 완료 후 http://localhost:8080으로 접속하면 계산기 UI가 나타나고, 입력한 두 숫자의 합이 gRPC 요청을 통해 계산되어 표시된다.
+
+실험을 마친 후 docker compose down 명령으로 모든 컨테이너를 종료할 수 있다.
+
+Docker Compose를 통해 두 마이크로서비스를 한 번에 실행하고 서로 연결할 수 있어, 별도의 네트워크 설정 없이 일관된 환경에서 배포와 테스트가 가능하다.
